@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=77.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stardust"
+version = "0.0.0.dev0"
+description = "General tools and enhancements for Python."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Grant Giesbrecht", email = "giesbrechtgrant@gmail.com" }]
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering"
+]
+license = "BSD-2-Clause"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
+
+[project.urls]
+Homepage = "https://github.com/Grant-Giesbrecht/stardust"
+Issues = "https://github.com/Grant-Giesbrecht/stardust/issues"
