@@ -1,9 +1,12 @@
 import datetime
-from typing import Any, Type, Optional, Any, Sequence #Callable, Dict,
+from typing import Any, Type, Optional, Any, Sequence, Callable, Dict
 from datetime import datetime, timezone
 from dataclasses import dataclass
 import json
 import numpy as np
+from abc import ABC, abstractmethod
+
+import pylogfile.base as plf
 
 SERIALIZER_FORMAT_VERSION = 1  # bump when your Serializer file shape/semantics change
 
@@ -16,12 +19,12 @@ class ClassRegistryInfo:
 	'''
 	
 	cls: Type # Class type
-	to: callable[[Any], dict] # Function for converting to serial
-	from_: callable[[dict], Any] # Function for converting from serial
+	to: Callable[[Any], dict] # Function for converting to serial
+	from_: Callable[[dict], Any] # Function for converting from serial
 	version: int # Version of class state data
 	
 	# Optional function to upgrade class data to a newer version
-	upgrade: Optional[callable[[dict, int, int], dict]] = None
+	upgrade: Optional[Callable[[dict, int, int], dict]] = None
 
 # A registry so only known classes can be reconstructed
 SERIALIZABLE_CLASS_REGISTRY: dict[str, ClassRegistryInfo] = {}
@@ -138,7 +141,7 @@ class Serializable:
 		return obj
 	
 	@classmethod
-	def _register_json_class(cls:Type, *, version:int|None=None, to:callable[[Any], dict]=None, from_:callable[[dict], Any]=None, upgrade:callable[[dict, int, int], dict]=None):
+	def _register_json_class(cls:Type, *, version:int|None=None, to:Callable[[Any], dict]=None, from_:Callable[[dict], Any]=None, upgrade:Callable[[dict, int, int], dict]=None):
 		''' Registers a class in the class registry global variable. All neccesary data
 		is automatically infered by just passing the class, however you can explicitly
 		define the functions as needed.
@@ -146,9 +149,9 @@ class Serializable:
 		Parameters:
 			cls: Class type to register
 			version (int): Version of class
-			to (callable): Function for serializing class
-			from_ (callable): Function for de-serializing class
-			upgrade (callable): Function for upgrading class serialized data
+			to (Callable): Function for serializing class
+			from_ (Callable): Function for de-serializing class
+			upgrade (Callable): Function for upgrading class serialized data
 		
 		Returns:
 			None
