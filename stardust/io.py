@@ -96,25 +96,37 @@ def dict_to_hdf(root_data:dict, save_file:str, use_json_backup:bool=False, show_
 	Returns:
 		bool: True if successfully saved.
 	'''
-	
+		
 	def write_level(fh:h5py.File, level_data:dict, show_detail:bool=False):
 		''' Writes a dictionary to the hdf file.
 		
 		Recursive function used by  '''
 		
+		if show_detail:
+				print(f"write_level received item of type: {type(level_data)}")
+		
 		# Scan over each directory of root-data
 		for k, v in level_data.items():
 			
+			if show_detail:
+				print(f"Handling object key={k} of type {type(v)}")
+			
 			# If value is a dictionary, this key represents a directory
 			if type(v) == dict:
+				
+				if show_detail:
+					print(f"\tDetected dictionary. Creating group {k} and writing new level...")
 				
 				# Create a new group
 				fh.create_group(k)
 				
 				# Write the dictionary to the group
-				write_level(fh[k], v)
+				write_level(fh[k], v, show_detail=show_detail)
 					
 			else: # Otherwise try to write this datatype (ex. list of floats)
+				
+				if show_detail:
+					print(f"\tDetected non-dictionary. Creating dataset {k} and saving value {v}")
 				
 				# Write value as a dataset
 				try:
