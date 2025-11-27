@@ -1,6 +1,7 @@
 import math
 import os
 import numpy as np
+import random
 
 def linstep(start, stop, step):
 	"""
@@ -51,3 +52,26 @@ def bounded_interp(x, y, x_target):
 	if x_target < x[0] or x_target > x[-1]:
 		return None
 	return np.interp(x_target, x, y) 
+
+def randrange(start:float, stop:float, bin_size:float=None):
+	"""
+	Generate a random number between `start` and `stop`.
+	
+	Params:
+		start (float): The starting value for the range.
+		stop (float): The end value for the range.
+		bin_size (float): If not None, bins random numbers, rounding to the
+			closest bin value. Size of value to round to is bin_size.
+	
+	Returns:
+		float: Random number
+	"""
+	
+	# Get random number is requested range
+	rval = random.random()*(stop-start) + start
+	
+	# Round to nearest bin (if requested)
+	if (bin_size is not None) and (bin_size > 0):
+		rval = np.round(rval/bin_size)*bin_size
+	
+	return rval
