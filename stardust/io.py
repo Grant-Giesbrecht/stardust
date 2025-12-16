@@ -354,7 +354,7 @@ def _derive_key(password:str, salt:bytes, iterations:int = 200_000) -> bytes:
 	return base64.urlsafe_b64encode(kdf.derive(password.encode()))
 
 
-def dumpsecure(filename:str, encrypted:dict, password:str, plain:dict={}, indent:int=4):
+def dumpsecure(file_pointer, encrypted:dict, password:str, plain:dict={}, indent:int=4):
 	"""
 	Write a JSON file containing:
 	  - 'plain': unencrypted dictionary
@@ -376,10 +376,9 @@ def dumpsecure(filename:str, encrypted:dict, password:str, plain:dict={}, indent
 		},
 	}
 	
-	with open(filename, "w") as fp:
-		json.dump(out, fp, indent=indent)
+	json.dump(out, file_pointer, indent=indent)
 
-def loadsecure(filename:str, password:str) -> tuple[Dict[str, Any], Dict[str, Any]]:
+def loadsecure(file_pointer, password:str) -> tuple[Dict[str, Any], Dict[str, Any]]:
 	"""
 	Read a file created by dumpsecure.
 	
@@ -390,8 +389,7 @@ def loadsecure(filename:str, password:str) -> tuple[Dict[str, Any], Dict[str, An
 		ValueError if password is incorrect or file was tampered with
 	"""
 	
-	with open(filename, "r") as fp:
-		data = json.load(fp)
+	data = json.load(file_pointer)
 	
 	plain = data["plain"]
 	enc = data["encrypted"]
