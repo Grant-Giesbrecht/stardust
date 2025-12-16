@@ -7,6 +7,12 @@ import time
 import numpy as np
 import json
 
+import base64
+from typing import Dict, Any
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.fernet import Fernet, InvalidToken
+
 def locate_drive(id:str, param:str="ID", filename="drive_id.txt", silence_output:bool=False):
 	''' Returns the path to a drive containing the file `filename`, 
 	which contains a line defining <param>=<id>. Used to identify a
@@ -337,3 +343,70 @@ def dict_summary(x:dict, verbose:int=0, indent_level:int=0, indent_char:str="   
 			else:
 				val_str = value_to_string(val, verbose, indent_level)
 				print(f"{get_indent(indent_level)}{color_name}{k}{Style.RESET_ALL} = {color_type}{type(val)}{Style.RESET_ALL} {val_str}{Style.RESET_ALL}")
+
+def _derive_key(password:str, salt:bytes, iterations:int = 200_000) -> bytes:
+	kdf = PBKDF2HMAC(
+		algorithm=hashes.SHA256(),
+		length=32,
+		salt=salt,
+		iterations=iterations,
+	)
+	return base64.urlsafe_b64encode(kdf.derive(password.encode()))
+
+
+def dumpsecure(filename:str, encrypted:dict, password:str, plain:dict={}, indent:int=4):
+	"""
+	Write a JSON file containing:
+	  - 'plain': unencrypted dictionary
+	  - 'encrypted': password-protected dictionary
+	"""
+	
+	salt = os.urandom(16)
+	key = _derive_key(password, salt)
+	fernet = Fernet(key)
+	
+	encrypted_bytes = json.dumps(encrypted).encode()
+	ciphertext = fernet.encrypt(encrypted_bytes)
+	
+	out = {
+		"plain": plain,
+		"encrypted": {
+			"salt": base64.b64encode(salt).decode(),
+			"ciphertext": ciphertext.decode(),
+		},
+	}
+	
+	with open(filename, "w") as fp:
+		json.dump(out, fp, indent=indent)
+
+def loadsecure(filename:str, password:str) -> tuple[Dict[str, Any], Dict[str, Any]]:
+	"""
+	Read a file created by dumpsecure.
+	
+	Returns:
+		(plain_dict, decrypted_dict)
+
+	Raises:
+		ValueError if password is incorrect or file was tampered with
+	"""
+	
+	with open(filename, "r") as fp:
+		data = json.load(fp)
+	
+	plain = data["plain"]
+	enc = data["encrypted"]
+	
+	salt = base64.b64decode(enc["salt"])
+	ciphertext = enc["ciphertext"].encode()
+	
+	key = _derive_key(password, salt)
+	fernet = Fernet(key)
+	
+	try:
+		decrypted_bytes = fernet.decrypt(ciphertext)
+	except InvalidToken:
+		raise ValueError("Incorrect password or corrupted encrypted data")
+	
+	encrypted = json.loads(decrypted_bytes.decode())
+	
+	return plain, encrypted
