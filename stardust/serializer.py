@@ -38,7 +38,7 @@ def to_serial_dict(obj:Any) -> dict:
 	Returns:
 		dict: Serialized object.
 	"""
-	format_dict = {"name": "ganymede.Serializable", "version": SERIALIZER_FORMAT_VERSION}
+	format_dict = {"name": "stardust.Serializable", "version": SERIALIZER_FORMAT_VERSION}
 	return {"__serializer_format__": format_dict, "state": Serializable.serialize(obj)}
 
 def from_serial_dict(serial_data:dict) -> Any:
