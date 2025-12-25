@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import numpy as np
 from abc import ABC, abstractmethod
+from colorama import Fore, Style
 
 import pylogfile.base as plf
 
@@ -84,6 +85,17 @@ def dump_state(obj, filename:str) -> None:
 	with open(filename, "w", encoding="utf-8") as f:
 		json.dump(serial_dict, f, ensure_ascii=False, indent=2)
 
+def valid_serialized_object(d:dict):
+	''' Checks if a dictionary contains the proper keys to comply as a valid
+	serialized object. Does not check for if class is a registered serializable
+	class, or if the data corresponding to the validated keys is itself valid.
+	'''
+	
+	# List of expected keys
+	expected = ['__type__', 'cls_serializer_version', 'state_data']
+	
+	# Return if all expected keys are present
+	return all( x in d.keys() for x in expected)
 
 class Serializable:
 	''' Class that allows the class data to be serialized to a dictionary format
@@ -301,7 +313,9 @@ class Serializable:
 					if info.upgrade:
 						payload = info.upgrade(payload, from_version, to_version)
 				return info.from_(payload)
-
+			elif valid_serialized_object(obj):
+				print(f"{Fore.RED}Warning:{Fore.WHITE} Skipping deserialization of Serializeable-formatted dictionary. Type {Fore.RED}{t}{Style.RESET_ALL} not in SERIALIZABLE_CLASS_REGISTRY.{Style.RESET_ALL}")
+				
 			# Ordinary dict
 			return {k: Serializable.deserialize(v) for k, v in obj.items()}
 
