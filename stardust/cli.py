@@ -147,6 +147,15 @@ class SettingsCLI:
 		
 		self._original_settings = copy.deepcopy(self.settings)
 	
+	def get(self, param:str):
+		''' Attempts to access parameter. Returns None if not 
+		present, then creates field for that entry.'''
+		
+		if param in self.settings:
+			return self.settings[param]
+		else:
+			self.settings[param] = None
+			return None
 	
 	def _load_settings(self) -> dict:
 		if self.settings_file is None:
