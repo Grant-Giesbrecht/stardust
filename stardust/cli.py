@@ -130,15 +130,24 @@ class SettingsCLI:
 	}
 	"""
 	
-	def __init__(self, settings_file: str | Path, autosave: bool = False):
-		self.settings_file = Path(settings_file)
-		self.autosave = autosave
-
-		self.settings = self._load_settings()
+	def __init__(self, settings_file: str | Path, autosave: bool = False, temp_settings:dict={}):
+		if settings_file is not None:
+			self.settings_file = Path(settings_file)
+			self.settings = self._load_settings()
+			self.autosave = autosave
+		else:
+			self.settings_file = settings_file
+			self.settings = temp_settings
+			self.autosave = False
+		
 		self._original_settings = copy.deepcopy(self.settings)
 	
 	
 	def _load_settings(self) -> dict:
+		if self.settings_file is None:
+			print(f"Cannot load when in temporary mode.")
+			return {}
+		
 		if not self.settings_file.exists():
 			raise FileNotFoundError(self.settings_file)
 	
@@ -146,6 +155,11 @@ class SettingsCLI:
 			return json.load(f)
 	
 	def save(self):
+		
+		if self.settings_file is None:
+			print(f"Cannot save when in temporary mode.")
+			return
+		
 		with self.settings_file.open("w", encoding="utf-8") as f:
 			json.dump(self.settings, f, indent=2)
 		self._original_settings = copy.deepcopy(self.settings)
@@ -266,8 +280,11 @@ Settings CLI commands:
 		if dirty and not self.autosave:
 			choice = input("Keep changes? [Y/n] ").strip().lower()
 			if choice != "n":
-				self.save()
-				print("Settings saved.")
+				if self.settings_file is not None:
+					self.save()
+					print("Settings saved.")
+				else:
+					print(f"Changes kept.")
 			else:
 				self.undo()
 				print("Changes discarded.")
