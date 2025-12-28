@@ -1,5 +1,8 @@
 import textwrap
 from itertools import groupby
+import json
+import copy
+from pathlib import Path
 
 def ensureWhitespace(s:str, targets:str, whitespace_list:str=" \t", pad_char=" "):
 	""" """
@@ -114,105 +117,158 @@ def wrap_text(text:str, width:int=80):
 	# Join with newline characters
 	return '\n'.join(all_lines)
 
-def settings_cli(settings: dict):
+class SettingsCLI:
 	"""
-	Interactive CLI for inspecting and editing settings.
+	Interactive settings editor for a dict-of-dicts settings structure.
 
-	settings format:
+	File format (JSON):
 	{
 		"setting_name": {
 			"value": <any>,
-			"desc": <str>
-		},
-		...
+			"desc": "<description>"
+		}
 	}
 	"""
+	
+	def __init__(self, settings_file: str | Path, autosave: bool = False):
+		self.settings_file = Path(settings_file)
+		self.autosave = autosave
 
-	def print_help():
+		self.settings = self._load_settings()
+		self._original_settings = copy.deepcopy(self.settings)
+	
+	
+	def _load_settings(self) -> dict:
+		if not self.settings_file.exists():
+			raise FileNotFoundError(self.settings_file)
+	
+		with self.settings_file.open("r", encoding="utf-8") as f:
+			return json.load(f)
+	
+	def save(self):
+		with self.settings_file.open("w", encoding="utf-8") as f:
+			json.dump(self.settings, f, indent=2)
+		self._original_settings = copy.deepcopy(self.settings)
+	
+	def undo(self):
+		self.settings = copy.deepcopy(self._original_settings)
+	
+	def _print_help(self):
 		print("""
 Settings CLI commands:
   list                      List all settings
   show <name>               Show value and description
-  set <name> <value>        Set a new value (type preserved)
+  set <name> <value>        Set value (type preserved)
+  save                      Save settings to file
+  undo                      Revert to last saved state
   help                      Show this help
-  exit | quit               Exit settings editor
+  exit | quit               Exit editor
 """)
 	
-	def list_settings():
-		for k, v in settings.items():
+	def _list_settings(self):
+		for k, v in self.settings.items():
 			print(f"{k:20} = {v['value']}  ({v['desc']})")
 	
-	def show_setting(name):
-		if name not in settings:
+	def _show_setting(self, name):
+		if name not in self.settings:
 			print(f"Unknown setting: {name}")
 			return
-		s = settings[name]
-		print(f"{name}")
+		
+		s = self.settings[name]
+		print(name)
 		print(f"  value: {s['value']} ({type(s['value']).__name__})")
 		print(f"  desc : {s['desc']}")
-	
-	def parse_value(old_value, new_str):
+		
+	def _parse_value(self, old_value, new_str):
 		t = type(old_value)
-		try:
-			if t is bool:
-				if new_str.lower() in ("true", "1", "yes", "on"):
-					return True
-				if new_str.lower() in ("false", "0", "no", "off"):
-					return False
-				raise ValueError
-			return t(new_str)
-		except Exception:
-			raise ValueError(f"Could not convert '{new_str}' to {t.__name__}")
+		
+		if t is bool:
+			if new_str.lower() in ("true", "1", "yes", "on"):
+				return True
+			if new_str.lower() in ("false", "0", "no", "off"):
+				return False
+			raise ValueError("Invalid boolean")
+		
+		return t(new_str)
 	
-	print("Entering settings editor (type 'help' for commands)")
-	while True:
-		try:
-			cmd = input("settings> ").strip()
-		except (EOFError, KeyboardInterrupt):
-			print()
-			break
+	def run(self):
+		print("Entering settings editor (type 'help' for commands)")
+		dirty = False
 		
-		if not cmd:
-			continue
-		
-		parts = cmd.split()
-		action = parts[0].lower()
-		
-		if action in ("exit", "quit"):
-			break
-		
-		elif action == "help":
-			print_help()
-		
-		elif action == "list":
-			list_settings()
-		
-		elif action == "show":
-			if len(parts) != 2:
-				print("Usage: show <name>")
-				continue
-			show_setting(parts[1])
-		
-		elif action == "set":
-			if len(parts) < 3:
-				print("Usage: set <name> <value>")
-				continue
-			name = parts[1]
-			value_str = " ".join(parts[2:])
-			
-			if name not in settings:
-				print(f"Unknown setting: {name}")
-				continue
-			
-			old_value = settings[name]["value"]
+		while True:
 			try:
-				new_value = parse_value(old_value, value_str)
-			except ValueError as e:
-				print(e)
+				cmd = input("settings> ").strip()
+			except (EOFError, KeyboardInterrupt):
+				print()
+				break
+			
+			if not cmd:
 				continue
 			
-			settings[name]["value"] = new_value
-			print(f"{name} set to {new_value}")
+			parts = cmd.split()
+			action = parts[0].lower()
+			
+			if action in ("exit", "quit"):
+				break
+			
+			elif action == "help":
+				self._print_help()
+			
+			elif action == "list":
+				self._list_settings()
+			
+			elif action == "show":
+				if len(parts) != 2:
+					print("Usage: show <name>")
+					continue
+				self._show_setting(parts[1])
+			
+			elif action == "set":
+				if len(parts) < 3:
+					print("Usage: set <name> <value>")
+					continue
+				
+				name = parts[1]
+				value_str = " ".join(parts[2:])
+				
+				if name not in self.settings:
+					print(f"Unknown setting: {name}")
+					continue
+				
+				try:
+					old = self.settings[name]["value"]
+					new = self._parse_value(old, value_str)
+				except Exception as e:
+					print(f"Error: {e}")
+					continue
+				
+				self.settings[name]["value"] = new
+				dirty = True
+				print(f"{name} set to {new}")
+				
+				if self.autosave:
+					self.save()
+					dirty = False
+			
+			elif action == "save":
+				self.save()
+				dirty = False
+				print("Settings saved.")
+			
+			elif action == "undo":
+				self.undo()
+				dirty = False
+				print("Reverted to last saved state.")
+			
+			else:
+				print(f"Unknown command: {action}")
 		
-		else:
-			print(f"Unknown command: {action}")
+		if dirty and not self.autosave:
+			choice = input("Keep changes? [Y/n] ").strip().lower()
+			if choice != "n":
+				self.save()
+				print("Settings saved.")
+			else:
+				self.undo()
+				print("Changes discarded.")
+
