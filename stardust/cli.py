@@ -113,3 +113,106 @@ def wrap_text(text:str, width:int=80):
 	
 	# Join with newline characters
 	return '\n'.join(all_lines)
+
+def settings_cli(settings: dict):
+	"""
+	Interactive CLI for inspecting and editing settings.
+
+	settings format:
+	{
+		"setting_name": {
+			"value": <any>,
+			"desc": <str>
+		},
+		...
+	}
+	"""
+
+	def print_help():
+		print("""
+Settings CLI commands:
+  list                      List all settings
+  show <name>               Show value and description
+  set <name> <value>        Set a new value (type preserved)
+  help                      Show this help
+  exit | quit               Exit settings editor
+""")
+	
+	def list_settings():
+		for k, v in settings.items():
+			print(f"{k:20} = {v['value']}  ({v['desc']})")
+	
+	def show_setting(name):
+		if name not in settings:
+			print(f"Unknown setting: {name}")
+			return
+		s = settings[name]
+		print(f"{name}")
+		print(f"  value: {s['value']} ({type(s['value']).__name__})")
+		print(f"  desc : {s['desc']}")
+	
+	def parse_value(old_value, new_str):
+		t = type(old_value)
+		try:
+			if t is bool:
+				if new_str.lower() in ("true", "1", "yes", "on"):
+					return True
+				if new_str.lower() in ("false", "0", "no", "off"):
+					return False
+				raise ValueError
+			return t(new_str)
+		except Exception:
+			raise ValueError(f"Could not convert '{new_str}' to {t.__name__}")
+	
+	print("Entering settings editor (type 'help' for commands)")
+	while True:
+		try:
+			cmd = input("settings> ").strip()
+		except (EOFError, KeyboardInterrupt):
+			print()
+			break
+		
+		if not cmd:
+			continue
+		
+		parts = cmd.split()
+		action = parts[0].lower()
+		
+		if action in ("exit", "quit"):
+			break
+		
+		elif action == "help":
+			print_help()
+		
+		elif action == "list":
+			list_settings()
+		
+		elif action == "show":
+			if len(parts) != 2:
+				print("Usage: show <name>")
+				continue
+			show_setting(parts[1])
+		
+		elif action == "set":
+			if len(parts) < 3:
+				print("Usage: set <name> <value>")
+				continue
+			name = parts[1]
+			value_str = " ".join(parts[2:])
+			
+			if name not in settings:
+				print(f"Unknown setting: {name}")
+				continue
+			
+			old_value = settings[name]["value"]
+			try:
+				new_value = parse_value(old_value, value_str)
+			except ValueError as e:
+				print(e)
+				continue
+			
+			settings[name]["value"] = new_value
+			print(f"{name} set to {new_value}")
+		
+		else:
+			print(f"Unknown command: {action}")
