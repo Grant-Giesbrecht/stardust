@@ -131,6 +131,11 @@ class SettingsCLI:
 	"""
 	
 	def __init__(self, settings_file: str | Path, autosave: bool = False, temp_settings:dict={}):
+		'''
+		Provide a settings_file to be able to save settings. Otherwise, set None for settings_file and
+		provide data to temp_settings. If a settings_file is provided, temp_settings is ignored.
+		'''
+		
 		if settings_file is not None:
 			self.settings_file = Path(settings_file)
 			self.settings = self._load_settings()
