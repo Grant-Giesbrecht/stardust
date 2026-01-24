@@ -4,6 +4,98 @@ import json
 import copy
 from pathlib import Path
 
+import math
+
+_SI_PREFIXES = {
+	-24: "y",
+	-21: "z",
+	-18: "a",
+	-15: "f",
+	-12: "p",
+	-9:  "n",
+	-6:  "µ",
+	-3:  "m",
+	 0:  "",
+	 3:  "k",
+	 6:  "M",
+	 9:  "G",
+	12:  "T",
+	15:  "P",
+	18:  "E",
+	21:  "Z",
+	24:  "Y",
+}
+
+def rde(
+	x: float,
+	sigfigs: int = 3,
+	use_si_prefix: bool = False,
+	exp_suffix: bool = True,
+	unit: str = "",
+) -> str:
+	"""
+	Pretty-print a number using engineering notation or SI prefixes.
+
+	Parameters
+	----------
+	x : float
+		Value to format
+	sigfigs : int
+		Number of significant figures
+	use_si_prefix : bool
+		Use SI prefixes (k, M, µ, etc.) instead of exponents
+	exp_suffix : bool
+		If False, uses ×10^N instead of eN (ignored if use_si_prefix=True)
+	unit : str
+		Optional unit string
+
+	Returns
+	-------
+	str
+	"""
+	if x == 0 or not math.isfinite(x):
+		return f"{x:g}{unit}"
+
+	sign = "-" if x < 0 else ""
+	x = abs(x)
+
+	# Engineering exponent
+	exp = int(math.floor(math.log10(x) / 3) * 3)
+	mant = x / (10 ** exp)
+
+	# Significant-figure rounding
+	digits = sigfigs - int(math.floor(math.log10(mant))) - 1
+	mant = round(mant, digits)
+
+	# Handle rounding overflow
+	if mant >= 1000:
+		mant /= 1000
+		exp += 3
+
+	mant_str = f"{mant:g}"
+
+	# SI prefix path
+	if use_si_prefix and exp in _SI_PREFIXES:
+		prefix = _SI_PREFIXES[exp]
+		return f"{sign}{mant_str}{prefix}{unit}"
+
+	# Engineering notation fallback
+	if exp == 0:
+		return f"{sign}{mant_str}{unit}"
+
+	if exp_suffix:
+		return f"{sign}{mant_str}e{exp}{unit}"
+	else:
+		return f"{sign}{mant_str}×10^{exp}{unit}"
+
+
+def rd(x:float, num_decimals:int=2):
+	
+	if x is None:
+		return "NaN"
+	
+	return f"{round(x*10**num_decimals)/(10**num_decimals)}"
+
 def ensureWhitespace(s:str, targets:str, whitespace_list:str=" \t", pad_char=" "):
 	""" """
 	
