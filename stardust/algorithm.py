@@ -51,20 +51,27 @@ def bounded_interp(x, y, x_target):
 	
 	if x_target < x[0] or x_target > x[-1]:
 		return None
-	return np.interp(x_target, x, y)
+	return np.interp(x_target, x, y) 
 
-def randrangef(xmin:float, xmax:float, step:float=None):
-	""" Returns a random number between 'xmin' and 'xmax' with
-	steps of 'step' enforced.
+def randrange(start:float, stop:float, bin_size:float=None):
+	"""
+	Generate a random number between `start` and `stop`.
 	
-	if step = None, will not force any steps
+	Params:
+		start (float): The starting value for the range.
+		stop (float): The end value for the range.
+		bin_size (float): If not None, bins random numbers, rounding to the
+			closest bin value. Size of value to round to is bin_size.
+	
+	Returns:
+		float: Random number
 	"""
 	
-	# Get float value in range
-	value = random.random()*(xmax - xmin) + xmin
+	# Get random number is requested range
+	rval = random.random()*(stop-start) + start
 	
-	# Round to a given step
-	if step is not None:
-		value = round(value/step)*step
+	# Round to nearest bin (if requested)
+	if (bin_size is not None) and (bin_size > 0):
+		rval = np.round(rval/bin_size)*bin_size
 	
-	return value
+	return rval

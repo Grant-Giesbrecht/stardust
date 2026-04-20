@@ -42,7 +42,7 @@ def to_serial_dict(obj:Any) -> dict:
 	format_dict = {"name": "stardust.Serializable", "version": SERIALIZER_FORMAT_VERSION}
 	return {"__serializer_format__": format_dict, "state": Serializable.serialize(obj)}
 
-def from_serial_dict(serial_data:dict) -> Any:
+def from_serial_dict(serial_data:dict, show_warnings:bool=False) -> Any:
 	""" Converts serialized-object data in dictionary format and returns a new
 	object of the specified type.
 	
@@ -52,7 +52,7 @@ def from_serial_dict(serial_data:dict) -> Any:
 	Returns:
 		New object
 	"""
-	return Serializable.deserialize(serial_data['state'])
+	return Serializable.deserialize(serial_data['state'], show_warnings=show_warnings)
 
 def restore_state(filename:str):
 	""" Returns an object that was serialized to dictionary format and reads
@@ -271,7 +271,7 @@ class Serializable:
 		return obj
 	
 	@staticmethod
-	def deserialize(obj:Any) -> Any:
+	def deserialize(obj:Any, show_warnings:bool=False) -> Any:
 		
 		def _decode_datetime(obj: dict) -> datetime:
 			s = obj["data"]
