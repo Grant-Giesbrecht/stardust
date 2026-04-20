@@ -9,7 +9,11 @@ description = "General tools and enhancements for Python."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Grant Giesbrecht", email = "giesbrechtgrant@gmail.com" }]
-dependencies = []
+dependencies = [
+    "h5py",
+    "colorama",
+    "cryptography"
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering"
