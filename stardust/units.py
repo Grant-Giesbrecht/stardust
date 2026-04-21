@@ -48,6 +48,7 @@ class UnitDefinition:
 
 ELEC_POTENTIAL = "elec-potential-dc"
 ELEC_POTENTIAL_AC = "elec-potential-ac"
+DISTANCE = "distance"
 
 def make_units():
 	unit_list = []
@@ -63,16 +64,15 @@ def make_units():
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "dBu", lambda x: dB_to_lin(x)*0.7745966692414834, lambda x: lin_to_dB(x/0.7745966692414834) )) # 0.7745 = sqrt(0.6)
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "dBV", lambda x: dB_to_lin(x), lambda x: lin_to_dB(x) ))
 	
+	# Length
+	unit_list.append(UnitDefinition(DISTANCE, "m", lambda x: x, lambda x: x, True))
+	unit_list.append(UnitDefinition(DISTANCE, "km", lambda x: x*1e3, lambda x: x/1e3))
+	unit_list.append(UnitDefinition(DISTANCE, "mi", lambda x: x*1609.344, lambda x: x/1609.344 )) # 0.7745 = sqrt(0.6)
+	unit_list.append(UnitDefinition(DISTANCE, "ft", lambda x: x*0.3048, lambda x: x/0.3048 ))
+	
 	return unit_list
 
 class UnitConverter:
-	
-	# ELEC_POTENTIAL_SI_UNIT = "V"
-	# ELEC_POTENTIAL_V = {"name": "elec-potential-V", "c"}
-	# ELEC_POTENTIAL_VPP = "elec-potential-Vpp"
-	# ELEC_POTENTIAL_VRMS = "elec-potential-Vrms"
-	# ELEC_POTENTIAL_DBV = "elec-potential-dBV"
-	# ELEC_POTENTIAL_DBU = "elec-potential-dBu"
 	
 	def __init__(self):
 		
