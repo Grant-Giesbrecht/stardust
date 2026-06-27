@@ -6,7 +6,7 @@ import json
 import numpy as np
 from abc import ABC, abstractmethod
 from colorama import Fore, Style
-
+import copy
 import pylogfile.base as plf
 
 SERIALIZER_FORMAT_VERSION = 1  # bump when your Serializer file shape/semantics change
