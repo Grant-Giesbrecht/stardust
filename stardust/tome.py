@@ -64,10 +64,7 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 	elif isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
 		grp = fh.create_group(key)
 		grp.attrs[_ATTR_TYPE] = "list_of_dicts"
-		for i, item in enumerate(value):
-			sub = grp.create_group(str(i))
-			sub.attrs[_ATTR_TYPE] = "dict"
-			_write_tome_dict(sub, item, show_detail=show_detail)
+		_write_tome_list_of_dicts(grp, value, show_detail=show_detail)
 
 	# ---- list of strings → vlen UTF-8 dataset ----------------------
 	# Handled explicitly (before the generic list branch) so the string
@@ -140,6 +137,14 @@ def _write_tome_dict(fh: h5py.Group, data: dict, show_detail: bool = False) -> N
 		_write_tome_value(fh, str(k), v, show_detail=show_detail)
 
 
+def _write_tome_list_of_dicts(fh: h5py.Group, items: list, show_detail: bool = False) -> None:
+	"""Write a list of dicts as indexed subgroups ("0", "1", ...) within `fh`."""
+	for i, item in enumerate(items):
+		sub = fh.create_group(str(i))
+		sub.attrs[_ATTR_TYPE] = "dict"
+		_write_tome_dict(sub, item, show_detail=show_detail)
+
+
 def _list_to_array(lst: list) -> np.ndarray:
 	"""
 	Convert a flat list to a numpy array with a sensible dtype.
@@ -165,12 +170,13 @@ def _list_to_array(lst: list) -> np.ndarray:
 
 # ------------------------------------------------------------------
 
-def dict_to_tome(root_data: dict,
+def dict_to_tome(root_data: dict | list[dict],
 				save_file: str,
 				use_json_backup: bool = False,
 				show_detail: bool = False) -> bool:
 	"""
-	Write a Python dictionary to an HDF5 file, using the tome format.
+	Write a Python dictionary (or a list of dictionaries) to an HDF5 file,
+	using the tome format.
 
 	Supported value types
 	---------------------
@@ -185,7 +191,7 @@ def dict_to_tome(root_data: dict,
 
 	Parameters
 	----------
-	root_data       : dict to serialise
+	root_data       : dict, or list of dicts, to serialise
 	save_file       : path to output .hdf5 / .h5 file
 	use_json_backup : if True and HDF5 write fails, saves a .json sidecar
 	show_detail     : verbose logging
@@ -196,8 +202,14 @@ def dict_to_tome(root_data: dict,
 	"""
 	try:
 		with h5py.File(save_file, 'w') as fh:
-			fh.attrs[_ATTR_TYPE] = "dict"
-			_write_tome_dict(fh, root_data, show_detail=show_detail)
+			if isinstance(root_data, list):
+				if not all(isinstance(v, dict) for v in root_data):
+					raise TypeError("dict_to_tome: list root_data must contain only dicts")
+				fh.attrs[_ATTR_TYPE] = "list_of_dicts"
+				_write_tome_list_of_dicts(fh, root_data, show_detail=show_detail)
+			else:
+				fh.attrs[_ATTR_TYPE] = "dict"
+				_write_tome_dict(fh, root_data, show_detail=show_detail)
 		return True
 
 	except Exception as e:
@@ -228,8 +240,7 @@ def _read_tome_value(node) -> Any:
 	# ---- groups ----------------------------------------------------
 	if isinstance(node, h5py.Group):
 		if pytype == "list_of_dicts":
-			# Keys are "0", "1", "2", ... — sort numerically
-			return [_read_tome_dict(node[k]) for k in sorted(node.keys(), key=int)]
+			return _read_tome_list_of_dicts(node)
 		else:  # plain dict (or unlabelled legacy group)
 			return _read_tome_dict(node)
 
@@ -290,14 +301,22 @@ def _read_tome_dict(fh: h5py.Group) -> dict:
 	return {k: _read_tome_value(fh[k]) for k in fh.keys()}
 
 
-def tome_to_dict(filename: str) -> dict | None:
+def _read_tome_list_of_dicts(fh: h5py.Group) -> list:
+	# Keys are "0", "1", "2", ... — sort numerically
+	return [_read_tome_dict(fh[k]) for k in sorted(fh.keys(), key=int)]
+
+
+def tome_to_dict(filename: str) -> dict | list | None:
 	"""
-	Read an HDF5 file written by dict_to_tome and return a Python dict.
+	Read an HDF5 file written by dict_to_tome and return a Python dict
+	(or a list of dicts, if that's what was originally written).
 
 	Returns None if the file cannot be read.
 	"""
 	try:
 		with h5py.File(filename, 'r') as fh:
+			if fh.attrs.get(_ATTR_TYPE, "") == "list_of_dicts":
+				return _read_tome_list_of_dicts(fh)
 			return _read_tome_dict(fh)
 	except Exception as e:
 		print(f"Failed to read HDF file: {e}")
