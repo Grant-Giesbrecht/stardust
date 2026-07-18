@@ -183,8 +183,8 @@ def dict_to_hdf(root_data:dict, save_file:str, use_json_backup:bool=False, show_
 			except Exception as e:
 				print(f"Failed to write JSON backup: ({e}).")
 				return False
-		
-		return True
+
+		return False
 
 def hdf_to_dict(filename, to_lists:bool=True, decode_strs:bool=True) -> dict:
 	''' Reads a HDF file and converts the data to a dictionary '''

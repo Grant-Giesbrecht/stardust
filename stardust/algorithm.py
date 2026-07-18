@@ -23,11 +23,16 @@ def linstep(start, stop, step):
 	# Generate list
 	n_steps = int(math.floor((stop - start) / step))
 	values = [start + i * step for i in range(n_steps + 1)]
-	
-	# Ensure exact inclusion of stop (handles floating point rounding issues)
-	if values[-1] < stop or math.isclose(values[-1], stop):
+
+	# Ensure exact inclusion of stop (handles floating point rounding issues).
+	# If the last generated value already lands on stop (within floating
+	# point tolerance), snap it to the exact value instead of appending a
+	# duplicate.
+	if math.isclose(values[-1], stop):
+		values[-1] = stop
+	elif values[-1] < stop:
 		values.append(stop)
-	
+
 	return values
 
 def has_ext(path:str, exts:list):

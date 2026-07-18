@@ -21,9 +21,15 @@ classifiers = [
 ]
 license = "BSD-2-Clause"
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [tool.setuptools]
 license-files = ["LICENSE"]
 
 [project.urls]
 Homepage = "https://github.com/Grant-Giesbrecht/stardust"
 Issues = "https://github.com/Grant-Giesbrecht/stardust/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

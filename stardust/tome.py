@@ -97,11 +97,14 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 	elif isinstance(value, list):
 		arr = _list_to_array(value)
 		if arr.dtype == object:
-			# Ragged/mixed fell back to string encoding → store as vlen UTF-8.
+			# Ragged/mixed fell back to per-element JSON encoding → store as
+			# vlen UTF-8, tagged so the reader knows to json.loads each entry
+			# back instead of treating it as a plain string.
 			ds = fh.create_dataset(key, data=arr,
 								   dtype=h5py.string_dtype(encoding="utf-8"))
 			ds.attrs[_ATTR_TYPE] = "list"
 			ds.attrs["dtype"] = "str"
+			ds.attrs["elem_encoding"] = "json"
 		else:
 			ds = fh.create_dataset(key, data=arr)
 			ds.attrs[_ATTR_TYPE] = "list"
@@ -275,7 +278,10 @@ def _read_tome_value(node) -> Any:
 	if pytype == "list":
 		arr = np.asarray(raw)
 		if _is_string_array(arr):
-			return _decode_iterable(arr.ravel().tolist())
+			decoded = _decode_iterable(arr.ravel().tolist())
+			if node.attrs.get("elem_encoding", "") == "json":
+				return [json.loads(x) for x in decoded]
+			return decoded
 		return arr.tolist()
 
 	if pytype == "json":

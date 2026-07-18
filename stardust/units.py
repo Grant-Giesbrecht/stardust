@@ -32,7 +32,7 @@ def dB_to_lin(x_dB:float, use10:bool=False) -> float:
 	'''
 	
 	if use10:
-		return np.log10(10, x_dB/10)
+		return np.power(10, x_dB/10)
 	else:
 		return np.power(10, x_dB/20)
 
