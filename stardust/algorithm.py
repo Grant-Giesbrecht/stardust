@@ -80,3 +80,22 @@ def randrange(start:float, stop:float, bin_size:float=None):
 		rval = np.round(rval/bin_size)*bin_size
 	
 	return rval
+
+def closest_indices(freq, target):
+    freq = np.asarray(freq)
+    target = np.asarray(target)
+
+    # positions where each target value would be inserted to keep freq sorted
+    idx = np.searchsorted(freq, target)
+
+    # clip so we can safely look at idx-1 and idx
+    idx = np.clip(idx, 1, len(freq) - 1)
+
+    left = freq[idx - 1]
+    right = freq[idx]
+
+    # choose whichever neighbor is actually closer
+    closer_left = np.abs(target - left) <= np.abs(target - right)
+    result = np.where(closer_left, idx - 1, idx)
+
+    return result.tolist()
