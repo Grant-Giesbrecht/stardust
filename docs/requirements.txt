@@ -1,0 +1,4 @@
+# Documentation build dependencies (used by Read the Docs and local builds)
+sphinx>=7.2
+sphinx-rtd-theme>=2.0
+myst-parser[linkify]>=2.0
