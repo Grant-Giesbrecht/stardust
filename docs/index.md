@@ -14,6 +14,13 @@ tome/python
 tome/format
 ```
 
+```{toctree}
+:maxdepth: 2
+:caption: Serializer
+
+serializer/unpacking
+```
+
 ## Installation
 
 ```bash
