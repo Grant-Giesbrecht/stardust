@@ -97,6 +97,64 @@ def valid_serialized_object(d:dict):
 	# Return if all expected keys are present
 	return all( x in d.keys() for x in expected)
 
+
+class UnpackReport:
+	"""What happened during an unpack: which fields were absent, which failed.
+
+	unpack() tolerates missing fields so that adding a field to a serialized
+	class does not invalidate every file written before it. That tolerance is
+	only safe if the caller can find out what was tolerated -- otherwise a
+	silently incomplete load looks exactly like a complete one. This report is
+	that channel.
+
+	Paths are dotted and index-qualified, e.g. 'axes.Ax0.legend_on'.
+	"""
+
+	def __init__(self):
+		self.missing = []		# field paths absent from the data
+		self.errors = []		# (field path, message) for data that could not be used
+
+	@property
+	def ok(self):
+		""" True when everything the object expected was present and usable. """
+		return not self.missing and not self.errors
+
+	def absorb(self, child, prefix:str):
+		""" Merge a nested object's report into this one, under `prefix`. """
+		if child is None:
+			return
+		self.missing.extend(f"{prefix}.{m}" for m in child.missing)
+		self.errors.extend((f"{prefix}.{path}", msg) for path, msg in child.errors)
+
+	def __bool__(self):
+		return self.ok
+
+	def __repr__(self):
+		return f"<UnpackReport ok={self.ok} missing={len(self.missing)} errors={len(self.errors)}>"
+
+	def __str__(self):
+		if self.ok:
+			return "complete"
+		parts = []
+		if self.missing:
+			shown = ", ".join(self.missing[:8])
+			more = f" (+{len(self.missing) - 8} more)" if len(self.missing) > 8 else ""
+			parts.append(f"missing: {shown}{more}")
+		if self.errors:
+			shown = ", ".join(f"{path} ({msg})" for path, msg in self.errors[:5])
+			more = f" (+{len(self.errors) - 5} more)" if len(self.errors) > 5 else ""
+			parts.append(f"errors: {shown}{more}")
+		return "; ".join(parts)
+
+
+class UnpackError(Exception):
+	""" Raised by unpack(strict=True) when a load was incomplete. """
+
+	def __init__(self, message, report=None):
+		super().__init__(message)
+		self.report = report
+
+
 class Serializable:
 	''' Class that allows the class data to be serialized to a dictionary format
 	for storage or transfer. Works by requiring any class data that needs to be
@@ -397,82 +455,129 @@ class Packable(ABC):
 		# Return data list
 		return d
 	
-	def unpack(self, data:dict):
-		""" Populates the object from a JSON dict """
-		
-		# Try to populate each item in manifest
+	def unpack(self, data:dict, strict:bool=False):
+		"""Populate the object from a dict produced by pack().
+
+		Missing fields are TOLERATED, not fatal. A field absent from `data` keeps
+		whatever value __init__ gave it, its name is recorded in the returned
+		report, and unpacking continues.
+
+		This matters more than it looks. Population happens in manifest order --
+		scalars, then nested objects, then lists, then dicts -- so aborting on the
+		first missing scalar prevents every nested object and collection below it
+		from loading at all. Adding one field to a serialized class would then
+		silently empty every file written before that addition, with no exception
+		raised. Tolerating absence is what makes it safe to add a field, which is
+		the ordinary way schemas evolve.
+
+		Genuinely bad data -- a value that cannot be assigned, a nested object that
+		cannot be interpreted -- is recorded as an error and also does not abort the
+		rest of the load. Partial recovery plus an honest report beats silent loss.
+
+		Returns an UnpackReport. Pass strict=True to raise UnpackError instead when
+		anything is missing or failed.
+		"""
+
+		report = UnpackReport()
+
+		# --- scalars -------------------------------------------------------
 		for mi in self.manifest:
 			self.log.lowdebug(f"Unpacking manifest, item:>{mi}<")
-			
-			# Try to assign the new value
+
+			if mi not in data:
+				report.missing.append(mi)
+				self.log.debug(f"Field '{mi}' absent for '{type(self).__name__}'; keeping default.")
+				continue
+
 			try:
 				setattr(self, mi, data[mi])
 			except Exception as e:
+				report.errors.append((mi, str(e)))
 				self.log.error(f"Failed to unpack item in object of type '{type(self).__name__}'. ({e})", detail=f"Type = {type(self)}")
-				return
-		
-		# Try to populate each Packable object in manifest
+
+		# --- nested Packables ----------------------------------------------
 		for mi in self.obj_manifest:
 			self.log.lowdebug(f"Unpacking obj_manifest, item:>{mi}<")
-			
-			# Try to update the object by unpacking the item
+
+			if mi not in data:
+				report.missing.append(mi)
+				continue
+
 			try:
 				getattr(self, mi).unpack(data[mi])
 			except Exception as e:
+				report.errors.append((mi, str(e)))
 				self.log.error(f"Failed to unpack Packable in object of type '{type(self).__name__}'. ({e})", detail=f"Type = {type(self)}")
-				return
-			
-		# Try to populate each list of Packable objects in manifest
+				continue
+
+			# Child reports are read back afterwards rather than threaded through
+			# the call, so a subclass that overrides unpack() with its own
+			# signature still contributes to the parent's report.
+			report.absorb(getattr(getattr(self, mi), 'unpack_report', None), mi)
+
+		# --- lists of Packables --------------------------------------------
 		for mi in self.list_manifest.keys():
-				
-			# Scan over list, unpacking each element
+
+			if mi not in data:
+				report.missing.append(mi)
+				continue
+
 			temp_list = []
-			for list_item in data[mi]:
-				self.log.lowdebug(f"Unpacking list_manifest, item:>{mi}<, element:>:a{list_item}<")
-				
-				# Try to create a new object and unpack a list element
+			for idx, list_item in enumerate(data[mi]):
+				self.log.lowdebug(f"Unpacking list_manifest, item:>{mi}<, element:>{list_item}<")
+
 				try:
-					# Create a new object of the correct type
 					new_obj = copy.deepcopy(self.list_manifest[mi])
-					
-					# Populate the new object by unpacking it, add to list
 					new_obj.unpack(list_item)
 					temp_list.append(new_obj)
 				except Exception as e:
+					report.errors.append((f"{mi}[{idx}]", str(e)))
 					self.log.error(f"Failed to unpack list of Packables in object of type '{type(self).__name__}'. Type={type(self)}. ({e})", detail=f"Type = {type(self)}")
-					return
+					continue
+
+				report.absorb(getattr(new_obj, 'unpack_report', None), f"{mi}[{idx}]")
+
+			# Assign whatever was recovered: partial beats nothing, and the report
+			# says exactly what was lost.
 			setattr(self, mi, temp_list)
-				# self.obj_manifest[mi] = copy.deepcopy(temp_list)
-		
-		# Scan over dict manifest
+
+		# --- dicts of Packables --------------------------------------------
 		for mi in self.dict_manifest.keys():
-			
-			# mi_deref = getattr(self, mi)
-			
-			# # Pack objects in list and add to output data
-			# d[mi] = [mi_deref[midk].pack() for midk in mi_deref.keys()]
-			
-			# Scan over list, unpacking each element
+
+			if mi not in data:
+				report.missing.append(mi)
+				continue
+
 			temp_dict = {}
 			for dmk in data[mi].keys():
-				self.log.lowdebug(f"Unpacking manifest, item:>{mi}<, element:>:a{dmk}<")
-				
-				# Try to create a new object and unpack a list element
+				self.log.lowdebug(f"Unpacking manifest, item:>{mi}<, element:>{dmk}<")
+
 				try:
-					# Create a new object of the correct type
-					try:
-						new_obj = copy.deepcopy(self.dict_manifest[mi])
-					except Exception as e:
-						print("Dict Manifest:")
-						print(self.dict_manifest)
-						self.log.error(f"Failed to unpack dict_manifest[{mi}], ({e})")
-						return
-					
-					# Populate the new object by unpacking it, add to list
+					new_obj = copy.deepcopy(self.dict_manifest[mi])
+				except Exception as e:
+					report.errors.append((f"{mi}.{dmk}", f"could not create target object: {e}"))
+					self.log.error(f"Failed to unpack dict_manifest[{mi}], ({e})")
+					continue
+
+				try:
 					new_obj.unpack(data[mi][dmk])
 					temp_dict[dmk] = new_obj
 				except Exception as e:
 					prob_item = data[mi][dmk]
+					report.errors.append((f"{mi}.{dmk}", str(e)))
 					self.log.error(f"Failed to unpack dict of Packables in object of type '{type(self).__name__}'. ({e})", detail=f"Class={type(self)}, problem manifest item=(name:{dmk}, type:{type(prob_item)})")
-					return
+					continue
+
+				report.absorb(getattr(new_obj, 'unpack_report', None), f"{mi}.{dmk}")
+
 			setattr(self, mi, temp_dict)
+
+		self.unpack_report = report
+
+		if strict and not report.ok:
+			raise UnpackError(
+				f"Unpacking '{type(self).__name__}' was incomplete: {report}",
+				report=report,
+			)
+
+		return report
