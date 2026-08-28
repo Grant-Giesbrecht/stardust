@@ -99,3 +99,34 @@ def closest_indices(freq, target):
     result = np.where(closer_left, idx - 1, idx)
 
     return result.tolist()
+
+import numpy as np
+
+def merge_lists(*arrays, decimals=9):
+    """
+    Merge multiple 1D arrays (e.g. a coarse sweep + one or more fine-resolution
+    regions) into a single sorted array with duplicate values removed.
+
+    Parameters
+    ----------
+    *arrays : array_like
+        Any number of 1D arrays to merge.
+    decimals : int, optional
+        Rounding precision used to detect "duplicate" values, since
+        floating-point values from different linspace calls that are
+        conceptually equal (e.g. 5.0 from both arrays) may differ in the
+        last bit. Default 9.
+
+    Returns
+    -------
+    np.ndarray
+        Sorted, de-duplicated union of all input arrays.
+    """
+    combined = np.concatenate([np.asarray(a).ravel() for a in arrays])
+    combined = np.sort(combined)
+
+    # Round for duplicate detection but keep original (unrounded) values
+    rounded = np.round(combined, decimals)
+    _, unique_idx = np.unique(rounded, return_index=True)
+
+    return combined[np.sort(unique_idx)]
