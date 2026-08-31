@@ -100,8 +100,6 @@ def closest_indices(freq, target):
 
     return result.tolist()
 
-import numpy as np
-
 def merge_lists(*arrays, decimals=9):
     """
     Merge multiple 1D arrays (e.g. a coarse sweep + one or more fine-resolution
@@ -130,3 +128,19 @@ def merge_lists(*arrays, decimals=9):
     _, unique_idx = np.unique(rounded, return_index=True)
 
     return combined[np.sort(unique_idx)]
+
+def nanlen(x):
+    """
+	Returns the length of a list, excluding all np.nan values.
+
+	Parameters
+	----------
+	x: array_like
+		1D array to count
+	
+	Returns
+	-------
+	int
+		Length of array excluding np.nan elements.
+	"""
+    return np.count_nonzero(~np.isnan(x))
