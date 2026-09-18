@@ -43,7 +43,13 @@ class UnitDefinition:
 		self.name = name #ex: "Vrms"
 		self.conversion_to_SI = to_SI # Equation to convert to SI
 		self.conversion_from_SI = from_SI # Equation to convert to SI
-		self.is_SI = False # Is this the SI unit?
+		
+		# Is this the unit its type converts through? Note this is looser than "is an SI unit":
+		# `Vrms` is flagged because it is what `elec-potential-ac` converts via, not because
+		# volts-RMS is an SI unit. Nothing reads this yet; it previously ignored the argument and
+		# was hard-coded to False, so no caller can have depended on the old behaviour.
+		self.is_SI = is_SI
+		
 		self.unit_type = unit_type # Ex: "elec-potential"
 
 ELEC_POTENTIAL = "elec-potential-dc"
@@ -59,6 +65,12 @@ def make_units():
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL, "uV", lambda x: x/1e6, lambda x: x*1e6))
 	
 	# Electric potential, AC
+	#
+	# WARNING: the Vpp <-> Vrms factor below is 2*sqrt(2), which is correct ONLY FOR A SINE WAVE.
+	# A square wave is 2x, a pulse depends on its duty cycle, and noise has no fixed relationship
+	# at all. Do not reuse this factor for an arbitrary signal: peak-to-peak and RMS are really
+	# measurement conventions on the same unit (volts) rather than two units, and converting
+	# between them needs to know the waveform. See docs/units_design.md section 3.2(f).
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "Vrms", lambda x: x, lambda x: x, True))
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "Vpp", lambda x: x/1.4142135623730951/2, lambda x: x*1.4142135623730951*2)) # 1.41... = sqrt(2)
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "dBu", lambda x: dB_to_lin(x)*0.7745966692414834, lambda x: lin_to_dB(x/0.7745966692414834) )) # 0.7745 = sqrt(0.6)
@@ -67,7 +79,7 @@ def make_units():
 	# Length
 	unit_list.append(UnitDefinition(DISTANCE, "m", lambda x: x, lambda x: x, True))
 	unit_list.append(UnitDefinition(DISTANCE, "km", lambda x: x*1e3, lambda x: x/1e3))
-	unit_list.append(UnitDefinition(DISTANCE, "mi", lambda x: x*1609.344, lambda x: x/1609.344 )) # 0.7745 = sqrt(0.6)
+	unit_list.append(UnitDefinition(DISTANCE, "mi", lambda x: x*1609.344, lambda x: x/1609.344 ))
 	unit_list.append(UnitDefinition(DISTANCE, "ft", lambda x: x*0.3048, lambda x: x/0.3048 ))
 	
 	return unit_list
