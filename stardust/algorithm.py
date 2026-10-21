@@ -35,6 +35,39 @@ def linstep(start, stop, step):
 
 	return values
 
+def logstep(start:float, stop:float, N:int, per_decade:bool=True, input_exp:bool=False):
+	"""
+	Generate logarithmically spaced values. `start` and `stop` take actual start/stop
+	values by default (not exponents), and N specifies number of points per decade
+	by default.
+	
+	Params:
+		start (float): The starting value of the sequence.
+		stop (float): The end value of the sequence (inclusive).
+		N (float): Number of points per decade. If `per_decade` is set to false, 
+			then `N` specifies the total number of points.
+		per_decade (bool): Controls if N sets the total number of points, or
+			points per decade.
+		input_exp (bool): Controls if `start` and `stop` specify actaul values
+			(default option), or are interpreted as exponents (ie. -1 to specify
+			0.1).
+	
+	Returns:
+		list: Values from start to stop (inclusive).
+	"""
+	
+	# Get start/stop values
+	start_exp = start if input_exp else np.log10(start)
+	stop_exp = stop if input_exp else np.log10(stop)
+	
+	if per_decade:
+		num_decades = abs(stop_exp - start_exp)
+		total_points = int(round(num_decades * N)) + 1
+	else:
+		total_points = N
+	
+	return np.logspace(start_exp, stop_exp, total_points)
+
 def has_ext(path:str, exts:list):
 	''' Checks if the given path ends with any of the provided extensions.
 	
@@ -82,55 +115,55 @@ def randrange(start:float, stop:float, bin_size:float=None):
 	return rval
 
 def closest_indices(freq, target):
-    freq = np.asarray(freq)
-    target = np.asarray(target)
+	freq = np.asarray(freq)
+	target = np.asarray(target)
 
-    # positions where each target value would be inserted to keep freq sorted
-    idx = np.searchsorted(freq, target)
+	# positions where each target value would be inserted to keep freq sorted
+	idx = np.searchsorted(freq, target)
 
-    # clip so we can safely look at idx-1 and idx
-    idx = np.clip(idx, 1, len(freq) - 1)
+	# clip so we can safely look at idx-1 and idx
+	idx = np.clip(idx, 1, len(freq) - 1)
 
-    left = freq[idx - 1]
-    right = freq[idx]
+	left = freq[idx - 1]
+	right = freq[idx]
 
-    # choose whichever neighbor is actually closer
-    closer_left = np.abs(target - left) <= np.abs(target - right)
-    result = np.where(closer_left, idx - 1, idx)
+	# choose whichever neighbor is actually closer
+	closer_left = np.abs(target - left) <= np.abs(target - right)
+	result = np.where(closer_left, idx - 1, idx)
 
-    return result.tolist()
+	return result.tolist()
 
 def merge_lists(*arrays, decimals=9):
-    """
-    Merge multiple 1D arrays (e.g. a coarse sweep + one or more fine-resolution
-    regions) into a single sorted array with duplicate values removed.
+	"""
+	Merge multiple 1D arrays (e.g. a coarse sweep + one or more fine-resolution
+	regions) into a single sorted array with duplicate values removed.
 
-    Parameters
-    ----------
-    *arrays : array_like
-        Any number of 1D arrays to merge.
-    decimals : int, optional
-        Rounding precision used to detect "duplicate" values, since
-        floating-point values from different linspace calls that are
-        conceptually equal (e.g. 5.0 from both arrays) may differ in the
-        last bit. Default 9.
+	Parameters
+	----------
+	*arrays : array_like
+		Any number of 1D arrays to merge.
+	decimals : int, optional
+		Rounding precision used to detect "duplicate" values, since
+		floating-point values from different linspace calls that are
+		conceptually equal (e.g. 5.0 from both arrays) may differ in the
+		last bit. Default 9.
 
-    Returns
-    -------
-    np.ndarray
-        Sorted, de-duplicated union of all input arrays.
-    """
-    combined = np.concatenate([np.asarray(a).ravel() for a in arrays])
-    combined = np.sort(combined)
+	Returns
+	-------
+	np.ndarray
+		Sorted, de-duplicated union of all input arrays.
+	"""
+	combined = np.concatenate([np.asarray(a).ravel() for a in arrays])
+	combined = np.sort(combined)
 
-    # Round for duplicate detection but keep original (unrounded) values
-    rounded = np.round(combined, decimals)
-    _, unique_idx = np.unique(rounded, return_index=True)
+	# Round for duplicate detection but keep original (unrounded) values
+	rounded = np.round(combined, decimals)
+	_, unique_idx = np.unique(rounded, return_index=True)
 
-    return combined[np.sort(unique_idx)]
+	return combined[np.sort(unique_idx)]
 
 def nanlen(x):
-    """
+	"""
 	Returns the length of a list, excluding all np.nan values.
 
 	Parameters
@@ -143,4 +176,4 @@ def nanlen(x):
 	int
 		Length of array excluding np.nan elements.
 	"""
-    return np.count_nonzero(~np.isnan(x))
+	return np.count_nonzero(~np.isnan(x))
