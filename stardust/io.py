@@ -408,3 +408,49 @@ def loadsecure(file_pointer, password:str) -> tuple[Dict[str, Any], Dict[str, An
 	encrypted = json.loads(decrypted_bytes.decode())
 	
 	return plain, encrypted
+
+import inspect
+import ast
+from types import SimpleNamespace
+
+
+def make_dict(**kwargs):
+	"""
+	Build a dict from keyword args. Robust and explicit —
+	call as make_dict(x=x, y=y, z=z).
+	"""
+	return kwargs
+
+
+def auto_dict(*args):
+	"""
+	Build a dict from bare variable names via source introspection —
+	call as make_dict_auto(x, y, z).
+	
+	Fragile: relies on parsing the literal call-site source line, so it
+	only handles simple, single-line calls with plain variable names.
+	Expressions or multi-line calls will produce garbage or weird keys.
+	"""
+	frame = inspect.currentframe().f_back
+	call_line = inspect.getframeinfo(frame).code_context[0]
+	tree = ast.parse(call_line.strip())
+	call_node = tree.body[0].value
+	names = [ast.unparse(arg) for arg in call_node.args]
+	return dict(zip(names, args))
+
+
+def make_namespace(d, nest:bool=True):
+	"""
+    Recursively convert a (possibly nested) dict into a SimpleNamespace
+    for dot-access, e.g. make_namespace(d).a.b.c
+    """
+	
+	if nest:
+		if isinstance(d, dict):
+			return SimpleNamespace(**{k: make_namespace(v) for k, v in d.items()})
+		elif isinstance(d, list):
+			return [make_namespace(v) for v in d]
+		else:
+			return d
+	else:
+		return SimpleNamespace(**d)
