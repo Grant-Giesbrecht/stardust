@@ -169,16 +169,52 @@ them yourself (e.g. base64 into a `str`) if you need them.
 default HDF5 settings, and the entire file is materialised in memory on read.
 Tomes are for "a run's worth of data", not for terabyte archives.
 
-**No append or partial read.** `dict_to_tome` truncates the target file (`'w'`
-mode) and `tome_to_dict` reads everything. To touch part of a tome, open it
-with `h5py` directly — see the [format specification](format.md).
+**`dict_to_tome` replaces the whole file.** It truncates the target (`'w'`
+mode) and `tome_to_dict` reads everything. To add to or read part of a tome,
+use the functions in [Writing into an open file](#writing-into-an-open-file).
 
 **Not concurrency-safe.** No locking is performed. Do not write a tome that
 another process may be reading.
+
+## Writing into an open file
+
+`dict_to_tome` writes a whole document at once. To add entries to a tome that
+already exists, or to build one piece by piece, open it with `h5py` and use the
+per-value functions it is built from:
+
+```python
+import h5py
+from stardust.tome import write_tome_value, require_tome_group, read_tome_value
+
+dict_to_tome({"x": x, "y": y}, "run.tome")
+
+with h5py.File("run.tome", "a") as fh:
+    write_tome_value(fh, "note", "added later")
+    grp = require_tome_group(fh, "DAQ_data/Daq1")    # creates DAQ_data and Daq1, tagged dict
+    write_tome_value(grp, "gain", 2.5)
+
+with h5py.File("run.tome", "r") as fh:
+    read_tome_value(fh["DAQ_data"])                  # {"Daq1": {"gain": 2.5}}, nothing else loaded
+```
+
+* `write_tome_value(group, key, value)` writes one value exactly as
+  `dict_to_tome` would. Unlike `dict_to_tome` it **raises** on failure, including
+  when `key` already exists.
+* `require_tome_group(parent, path)` returns the dict group at `path`, creating
+  missing groups along the way. It raises `TypeError` if something on the path
+  is a dataset or a `list_of_dicts`.
+* `read_tome_value(node)` decodes one group or dataset.
+* `TYPE_ATTR` (`"__pytype__"`) is for code that creates nodes itself, such as a
+  resizable dataset that grows during a recording: tag it the way
+  `write_tome_value` would (`TYPE_ATTR = "ndarray"`, `dtype = "float64"`).
+
+Files from `dict_to_tome` are created with `libver="latest"` (HDF5 superblock
+v3), which is what lets one later be opened for a SWMR recording. They need
+libhdf5 1.10 or newer to read.
 
 ## API reference
 
 ```{eval-rst}
 .. automodule:: stardust.tome
-   :members: dict_to_tome, tome_to_dict
+   :members: dict_to_tome, tome_to_dict, write_tome_value, read_tome_value, require_tome_group
 ```

@@ -38,7 +38,7 @@ def dB_to_lin(x_dB:float, use10:bool=False) -> float:
 
 class UnitDefinition:
 	
-	def __init__(self, unit_type:str, name:str, to_SI, from_SI, is_SI:bool=False):
+	def __init__(self, unit_type:str, name:str, to_SI, from_SI, is_SI:bool=False, aliases:list=[]):
 		
 		self.name = name #ex: "Vrms"
 		self.conversion_to_SI = to_SI # Equation to convert to SI
@@ -49,7 +49,9 @@ class UnitDefinition:
 		# volts-RMS is an SI unit. Nothing reads this yet; it previously ignored the argument and
 		# was hard-coded to False, so no caller can have depended on the old behaviour.
 		self.is_SI = is_SI
-		
+
+		self.aliases = aliases # Other names matchable other than the primary name
+
 		self.unit_type = unit_type # Ex: "elec-potential"
 
 ELEC_POTENTIAL = "elec-potential-dc"
@@ -77,10 +79,13 @@ def make_units():
 	unit_list.append(UnitDefinition(ELEC_POTENTIAL_AC, "dBV", lambda x: dB_to_lin(x), lambda x: lin_to_dB(x) ))
 	
 	# Length
-	unit_list.append(UnitDefinition(DISTANCE, "m", lambda x: x, lambda x: x, True))
-	unit_list.append(UnitDefinition(DISTANCE, "km", lambda x: x*1e3, lambda x: x/1e3))
-	unit_list.append(UnitDefinition(DISTANCE, "mi", lambda x: x*1609.344, lambda x: x/1609.344 ))
-	unit_list.append(UnitDefinition(DISTANCE, "ft", lambda x: x*0.3048, lambda x: x/0.3048 ))
+	unit_list.append(UnitDefinition(DISTANCE, "m", lambda x: x, lambda x: x, True, aliases=["meter"]))
+	unit_list.append(UnitDefinition(DISTANCE, "km", lambda x: x*1e3, lambda x: x/1e3, aliases=["kilometer"]))
+	unit_list.append(UnitDefinition(DISTANCE, "mi", lambda x: x*1609.344, lambda x: x/1609.344, aliases=["mile"]))
+	unit_list.append(UnitDefinition(DISTANCE, "ft", lambda x: x*0.3048, lambda x: x/0.3048, aliases=["foot", "feet"]))
+	unit_list.append(UnitDefinition(DISTANCE, "in", lambda x: x*0.0254, lambda x: x*39.3701, aliases=["inch"]))
+	unit_list.append(UnitDefinition(DISTANCE, "mil", lambda x: x*2.54e-5, lambda x: x/2.54e-5 ))
+
 	
 	return unit_list
 
@@ -108,9 +113,9 @@ class UnitConverter:
 		for unit_ in self.unit_list:
 			
 			# Look for a match
-			if unit_.name == from_unit:
+			if unit_.name == from_unit or (from_unit in unit_.aliases):
 				from_obj = copy.copy(unit_)
-			if unit_.name == to_unit:
+			if unit_.name == to_unit  or (to_unit in unit_.aliases):
 				to_obj = copy.copy(unit_)
 			
 			# Quit when both are found

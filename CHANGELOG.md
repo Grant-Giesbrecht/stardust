@@ -5,6 +5,25 @@ Notable changes to **stardust-tools**. This project follows
 
 Entries begin at 0.2.0; earlier releases predate this file.
 
+## [Unreleased]
+
+### Added
+
+- **`write_tome_value`, `read_tome_value`** (formerly the private
+  `_write_tome_value` / `_read_tome_value`) and **`require_tome_group`**, for
+  writing into and reading part of a tome that is already open - e.g. appending a
+  group to an existing file. `TYPE_ATTR` is public for code that creates nodes
+  itself. See [Writing into an open file](docs/tome/python.md#writing-into-an-open-file).
+- Additional units added to UnitConverter, as well as aliases for alternative unit
+  names.
+
+### Changed
+
+- **`dict_to_tome` creates files with `libver="latest"`** (HDF5 superblock v3), so
+  a tome can later be opened in SWMR mode to append a live recording. Files now
+  need libhdf5 1.10+ to read, as the format specification already required; very
+  old readers (libhdf5 1.8, including older MATLAB releases) cannot open them.
+
 ## [0.2.0]
 
 ### Fixed

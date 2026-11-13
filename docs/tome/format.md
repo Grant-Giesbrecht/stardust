@@ -11,9 +11,13 @@ extensions are used, and no HDF5 features beyond groups, datasets, scalar and
 simple dataspaces, attributes, and variable-length strings are required.
 
 * Any HDF5 library version that can read a file written by libhdf5 1.10+ will
-  do. Contiguous, uncompressed, unchunked datasets are what a stardust writer
-  produces; a reader should not assume this, since HDF5 makes layout
-  transparent anyway.
+  do. A stardust writer creates files with the latest file-format features
+  (superblock v3, h5py `libver="latest"`), which libhdf5 1.8 cannot open; this
+  is what allows a tome to be switched to SWMR mode later, to append a live
+  recording. Contiguous, uncompressed, unchunked datasets are what
+  `dict_to_tome` produces; a reader should not assume this, since other writers
+  (e.g. a recorder appending to a resizable dataset) use chunked layouts, and
+  HDF5 makes layout transparent anyway.
 * File extension: `.tome` by convention; `.h5` and `.hdf5` are equally valid.
 * Every string in the format — dataset payloads and attribute values alike — is
   **UTF-8**.

@@ -6,9 +6,17 @@ from typing import Any
 
 # ------------------------------------------------------------------
 # Sentinel attribute written alongside every dataset/group so that
-# hdf_to_dict knows how to reconstruct the original Python type.
+# tome_to_dict knows how to reconstruct the original Python type.
+# Public for code that builds tome nodes by hand (e.g. a resizable
+# dataset that grows while recording), which must tag them too.
 # ------------------------------------------------------------------
-_ATTR_TYPE = "__pytype__"
+TYPE_ATTR = "__pytype__"
+
+# libver passed to h5py.File by every stardust writer. "latest" gives a
+# superblock-v3 file, which HDF5 requires before a file can be switched to
+# SWMR mode - so a tome can later have a live recording appended to it.
+# Readers need libhdf5 1.10+, which the format already requires.
+TOME_LIBVER = "latest"
 
 
 # ------------------------------------------------------------------
@@ -45,10 +53,18 @@ def _is_string_array(arr: np.ndarray) -> bool:
 	return arr.dtype.kind in ("S", "U", "O")
 
 
-def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = False) -> None:
+def write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = False) -> None:
 	"""
-	Write a single key/value pair into an open HDF5 group.
-	Dispatches on the Python type of `value`.
+	Write a single key/value pair into an open HDF5 group, as tome nodes.
+
+	The building block of dict_to_tome, for writing into a file that is
+	already open: adding entries to an existing tome, or writing into a
+	subgroup (see require_tome_group). Dispatches on the Python type of
+	`value` exactly as dict_to_tome does (see the format specification).
+
+	Raises (rather than returning False, as dict_to_tome does) if `key`
+	already exists in `fh` or `value` cannot be encoded. A failed write may
+	leave a partial node behind.
 	"""
 
 	if show_detail:
@@ -57,13 +73,13 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 	# ---- dict -------------------------------------------------------
 	if isinstance(value, dict):
 		grp = fh.create_group(key)
-		grp.attrs[_ATTR_TYPE] = "dict"
+		grp.attrs[TYPE_ATTR] = "dict"
 		_write_tome_dict(grp, value, show_detail=show_detail)
 
 	# ---- list of dicts → indexed subgroups -------------------------
 	elif isinstance(value, list) and value and all(isinstance(v, dict) for v in value):
 		grp = fh.create_group(key)
-		grp.attrs[_ATTR_TYPE] = "list_of_dicts"
+		grp.attrs[TYPE_ATTR] = "list_of_dicts"
 		_write_tome_list_of_dicts(grp, value, show_detail=show_detail)
 
 	# ---- list of strings → vlen UTF-8 dataset ----------------------
@@ -73,7 +89,7 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 	elif isinstance(value, list) and value and all(isinstance(v, str) for v in value):
 		ds = fh.create_dataset(key, data=np.array(value, dtype=object),
 							   dtype=h5py.string_dtype(encoding="utf-8"))
-		ds.attrs[_ATTR_TYPE] = "list"
+		ds.attrs[TYPE_ATTR] = "list"
 		ds.attrs["dtype"] = "str"
 
 	# ---- numpy array ------------------------------------------------
@@ -86,11 +102,11 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 					for x in value.ravel().tolist()]
 			ds = fh.create_dataset(key, data=np.array(flat, dtype=object),
 								   dtype=h5py.string_dtype(encoding="utf-8"))
-			ds.attrs[_ATTR_TYPE] = "ndarray"
+			ds.attrs[TYPE_ATTR] = "ndarray"
 			ds.attrs["dtype"] = "str"
 		else:
 			ds = fh.create_dataset(key, data=value)
-			ds.attrs[_ATTR_TYPE] = "ndarray"
+			ds.attrs[TYPE_ATTR] = "ndarray"
 			ds.attrs["dtype"] = str(value.dtype)
 
 	# ---- plain list (convert to numpy for storage) -----------------
@@ -102,34 +118,34 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 			# back instead of treating it as a plain string.
 			ds = fh.create_dataset(key, data=arr,
 								   dtype=h5py.string_dtype(encoding="utf-8"))
-			ds.attrs[_ATTR_TYPE] = "list"
+			ds.attrs[TYPE_ATTR] = "list"
 			ds.attrs["dtype"] = "str"
 			ds.attrs["elem_encoding"] = "json"
 		else:
 			ds = fh.create_dataset(key, data=arr)
-			ds.attrs[_ATTR_TYPE] = "list"
+			ds.attrs[TYPE_ATTR] = "list"
 			ds.attrs["dtype"] = str(arr.dtype)
 
 	# ---- scalar str ------------------------------------------------
 	elif isinstance(value, str):
 		ds = fh.create_dataset(key, data=value, dtype=h5py.string_dtype(encoding="utf-8"))
-		ds.attrs[_ATTR_TYPE] = "str"
+		ds.attrs[TYPE_ATTR] = "str"
 
 	# ---- scalar bool (check before int — bool is subclass of int) --
 	elif isinstance(value, bool):
 		ds = fh.create_dataset(key, data=int(value))
-		ds.attrs[_ATTR_TYPE] = "bool"
+		ds.attrs[TYPE_ATTR] = "bool"
 
 	# ---- scalar numeric (int, float, complex) ----------------------
 	elif isinstance(value, (int, float, complex, np.integer, np.floating)):
 		ds = fh.create_dataset(key, data=value)
-		ds.attrs[_ATTR_TYPE] = type(value).__name__
+		ds.attrs[TYPE_ATTR] = type(value).__name__
 
 	# ---- fallback: try JSON-encoding the object --------------------
 	else:
 		encoded = json.dumps(value)
 		ds = fh.create_dataset(key, data=encoded, dtype=h5py.string_dtype(encoding="utf-8"))
-		ds.attrs[_ATTR_TYPE] = "json"
+		ds.attrs[TYPE_ATTR] = "json"
 		if show_detail:
 			print(f"    Fell back to JSON encoding for type {type(value).__name__}")
 
@@ -137,14 +153,14 @@ def _write_tome_value(fh: h5py.Group, key: str, value: Any, show_detail: bool = 
 def _write_tome_dict(fh: h5py.Group, data: dict, show_detail: bool = False) -> None:
 	"""Iterate a dict and write each entry into the HDF5 group `fh`."""
 	for k, v in data.items():
-		_write_tome_value(fh, str(k), v, show_detail=show_detail)
+		write_tome_value(fh, str(k), v, show_detail=show_detail)
 
 
 def _write_tome_list_of_dicts(fh: h5py.Group, items: list, show_detail: bool = False) -> None:
 	"""Write a list of dicts as indexed subgroups ("0", "1", ...) within `fh`."""
 	for i, item in enumerate(items):
 		sub = fh.create_group(str(i))
-		sub.attrs[_ATTR_TYPE] = "dict"
+		sub.attrs[TYPE_ATTR] = "dict"
 		_write_tome_dict(sub, item, show_detail=show_detail)
 
 
@@ -169,6 +185,36 @@ def _list_to_array(lst: list) -> np.ndarray:
 	except ValueError:
 		# Ragged or mixed — store as JSON-encoded strings
 		return np.array([json.dumps(x) for x in lst], dtype=object)
+
+
+def require_tome_group(parent: h5py.Group, path: str) -> h5py.Group:
+	"""
+	Return the dict group at `path` (e.g. "DAQ_data/Daq1") under `parent`,
+	creating any groups missing along the way, each tagged dict.
+
+	Existing groups on the path are used as they are. One that is tagged
+	something other than dict - a list_of_dicts, whose children must be
+	named "0", "1", ... - or a dataset in the way raises TypeError, since
+	adding a named child there would make the document mean something else.
+	An untagged group counts as a dict, as it does when read.
+	"""
+	def check(grp):
+		if not isinstance(grp, h5py.Group):
+			raise TypeError(f"{grp.name} is a dataset, not a group - cannot write under it")
+		tag = _decode_scalar(grp.attrs.get(TYPE_ATTR, "dict"))
+		if tag != "dict":
+			raise TypeError(f"{grp.name} is a tome {tag!r}, not a dict - cannot add named entries to it")
+
+	grp = parent
+	check(grp)
+	for name in (part for part in path.split("/") if part):
+		if name in grp:
+			grp = grp[name]
+			check(grp)
+		else:
+			grp = grp.create_group(name)
+			grp.attrs[TYPE_ATTR] = "dict"
+	return grp
 
 
 # ------------------------------------------------------------------
@@ -204,14 +250,14 @@ def dict_to_tome(root_data: dict | list[dict],
 	True on success, False on failure.
 	"""
 	try:
-		with h5py.File(save_file, 'w') as fh:
+		with h5py.File(save_file, 'w', libver=TOME_LIBVER) as fh:
 			if isinstance(root_data, list):
 				if not all(isinstance(v, dict) for v in root_data):
 					raise TypeError("dict_to_tome: list root_data must contain only dicts")
-				fh.attrs[_ATTR_TYPE] = "list_of_dicts"
+				fh.attrs[TYPE_ATTR] = "list_of_dicts"
 				_write_tome_list_of_dicts(fh, root_data, show_detail=show_detail)
 			else:
-				fh.attrs[_ATTR_TYPE] = "dict"
+				fh.attrs[TYPE_ATTR] = "dict"
 				_write_tome_dict(fh, root_data, show_detail=show_detail)
 		return True
 
@@ -230,15 +276,17 @@ def dict_to_tome(root_data: dict | list[dict],
 
 # ------------------------------------------------------------------
 
-def _read_tome_value(node) -> Any:
+def read_tome_value(node) -> Any:
 	"""
 	Reconstruct a Python value from an HDF5 node (group or dataset),
-	using the __pytype__ attribute written by dict_to_tome.
+	using the __pytype__ attribute written by dict_to_tome. The
+	counterpart of write_tome_value: reads one part of a tome without
+	loading the rest, e.g. read_tome_value(fh["DAQ_data/Daq1"]).
 
 	All string data is decoded to `str` here — h5py returns vlen strings as
 	`bytes`, so every dataset branch that can hold text decodes explicitly.
 	"""
-	pytype = node.attrs.get(_ATTR_TYPE, "")
+	pytype = node.attrs.get(TYPE_ATTR, "")
 
 	# ---- groups ----------------------------------------------------
 	if isinstance(node, h5py.Group):
@@ -304,7 +352,7 @@ def _read_tome_value(node) -> Any:
 
 
 def _read_tome_dict(fh: h5py.Group) -> dict:
-	return {k: _read_tome_value(fh[k]) for k in fh.keys()}
+	return {k: read_tome_value(fh[k]) for k in fh.keys()}
 
 
 def _read_tome_list_of_dicts(fh: h5py.Group) -> list:
@@ -321,7 +369,7 @@ def tome_to_dict(filename: str) -> dict | list | None:
 	"""
 	try:
 		with h5py.File(filename, 'r') as fh:
-			if fh.attrs.get(_ATTR_TYPE, "") == "list_of_dicts":
+			if fh.attrs.get(TYPE_ATTR, "") == "list_of_dicts":
 				return _read_tome_list_of_dicts(fh)
 			return _read_tome_dict(fh)
 	except Exception as e:

@@ -5,7 +5,8 @@ import h5py
 import numpy as np
 import pytest
 
-from stardust.tome import dict_to_tome, tome_to_dict
+from stardust.tome import (TYPE_ATTR, dict_to_tome, read_tome_value, require_tome_group,
+                           tome_to_dict, write_tome_value)
 
 
 @pytest.fixture
@@ -329,3 +330,68 @@ def test_list_of_str_not_double_encoded(tome_path):
     data = {"names": ["alice", "bob"]}
     out = roundtrip(data, tome_path)
     assert out == data
+
+
+# ------------------------------------------------------------------
+# Writing into an open file: write_tome_value / require_tome_group
+# ------------------------------------------------------------------
+
+def test_write_tome_value_adds_to_an_existing_tome(tome_path):
+    assert dict_to_tome({"x": np.arange(3.0)}, tome_path)
+    with h5py.File(tome_path, "a") as fh:
+        write_tome_value(fh, "note", "added later")
+        write_tome_value(fh, "flags", {"ok": True})
+    out = tome_to_dict(tome_path)
+    assert out["x"].tolist() == [0.0, 1.0, 2.0]
+    assert out["note"] == "added later" and out["flags"] == {"ok": True}
+
+
+def test_write_tome_value_refuses_an_existing_key(tome_path):
+    assert dict_to_tome({"x": 1}, tome_path)
+    with h5py.File(tome_path, "a") as fh:
+        with pytest.raises(ValueError):
+            write_tome_value(fh, "x", 2)
+    assert tome_to_dict(tome_path) == {"x": 1}
+
+
+def test_require_tome_group_creates_tagged_dicts(tome_path):
+    assert dict_to_tome({"x": 1, "runs": {"old": 0}}, tome_path)
+    with h5py.File(tome_path, "a") as fh:
+        write_tome_value(require_tome_group(fh, "runs/daq/1"), "v", 2.5)
+        assert require_tome_group(fh, "/runs/daq/1/") == fh["runs/daq/1"]      # idempotent
+        assert fh["runs/daq"].attrs[TYPE_ATTR] == "dict"
+    assert tome_to_dict(tome_path) == {"x": 1, "runs": {"old": 0, "daq": {"1": {"v": 2.5}}}}
+
+
+@pytest.mark.parametrize("path", ["x", "x/below", "events", "events/extra"])
+def test_require_tome_group_refuses_a_non_dict_on_the_path(tome_path, path):
+    assert dict_to_tome({"x": 1, "events": [{"t": 0.1}]}, tome_path)
+    with h5py.File(tome_path, "a") as fh:
+        with pytest.raises(TypeError):
+            require_tome_group(fh, path)
+
+
+def test_require_tome_group_refuses_a_list_of_dicts_root(tome_path):
+    assert dict_to_tome([{"i": 0}], tome_path)
+    with h5py.File(tome_path, "a") as fh:
+        with pytest.raises(TypeError):
+            require_tome_group(fh, "extra")
+
+
+def test_read_tome_value_reads_one_subtree(tome_path):
+    assert dict_to_tome({"big": np.zeros(10), "meta": {"a": 1, "b": "two"}}, tome_path)
+    with h5py.File(tome_path, "r") as fh:
+        assert read_tome_value(fh["meta"]) == {"a": 1, "b": "two"}
+
+
+def test_a_new_tome_can_take_a_swmr_recording(tome_path):
+    """ dict_to_tome writes superblock v3 (libver latest), without which HDF5 refuses to switch a
+    file to SWMR mode - so a live recording can be appended to an existing tome. """
+    assert dict_to_tome({"x": 1}, tome_path)
+    with h5py.File(tome_path, "a", libver="latest") as fh:
+        ds = require_tome_group(fh, "rec").create_dataset("data", shape=(0,), maxshape=(None,), dtype="f8")
+        fh.swmr_mode = True
+        ds.resize((3,))
+        ds[:] = [1.0, 2.0, 3.0]
+    with h5py.File(tome_path, "r") as fh:
+        assert fh["rec/data"][:].tolist() == [1.0, 2.0, 3.0]
